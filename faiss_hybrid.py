@@ -100,16 +100,6 @@ def extract_text_from_json(json_data):
     else:
         return str(json_data)
 
-@measure_execution_time
-def load_resumes(file_path):
-    # Read the CSV file
-    df = pd.read_csv(file_path)
-    
-    # Convert DataFrame to list of tuples
-    resumes = list(df.itertuples(index=False, name=None))
-    
-    return resumes
-
 def parse_json_field(field):
     if isinstance(field, str):
         try:
