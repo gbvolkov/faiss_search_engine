@@ -8,19 +8,11 @@ import json
 import os
 import time
 import requests
+from datasets import Dataset, load_from_disk
 
-#POSITION = 4+1  # Должность
-#EXPERIENCE = 5+1  # ОпытРаботы
-#EDUCATION = 6+1  # ИнформацияОбразовании
-#PROFESSIONAL_SKILLS = 7+1  # ПрофессиональныеНавыки
-#SOFT_SKILLS = 8+1  # ГибкиеНавыки
-#WORK_EXPERIENCE = 9+1  # ИнформацияОпытРаботы
-
-SAMPLES_NUMBER = 100
+SAMPLES_NUMBER = 1000
 
 nltk.download('punkt', quiet=True)
-
-# Load the Russian SBERT model
 #model_name = 'sberbank-ai/sbert_large_mt_nlu_ru'
 model_name = 'sentence-transformers/distiluse-base-multilingual-cased-v1'
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -68,29 +60,6 @@ def score_resume(resume_embedding, vacancy_embedding):
     similarity_score = np.dot(resume_embedding, vacancy_embedding) / (np.linalg.norm(resume_embedding) * np.linalg.norm(vacancy_embedding))
     return similarity_score * 100  # Scale up for readability
 
-@measure_execution_time
-def russian_semantic_search(vacancy, prepared_resumes):
-    vacancy_text = preprocess_text(vacancy)
-    
-    # Generate embeddings
-    vacancy_embedding = get_embedding(vacancy_text)
-    resume_embeddings = np.array([get_embedding(text) for _, text in prepared_resumes])
-    
-    # Create FAISS index
-    faiss_index = create_faiss_index(resume_embeddings)
-    
-    # Perform similarity search
-    D, I = faiss_index.search(vacancy_embedding.reshape(1, -1).astype('float32'), k=min(50, len(prepared_resumes)))
-    
-    # Score the top candidates
-    scored_resumes = []
-    for idx, _ in zip(I[0], D[0]):
-        resume, resume_text = prepared_resumes[idx]
-        total_score = score_resume(resume_embeddings[idx], vacancy_embedding)
-        scored_resumes.append((resume, total_score))
-    
-    return sorted(scored_resumes, key=lambda x: x[1], reverse=True)[:5]
-
 
 def extract_text_from_json(json_data):
     if isinstance(json_data, list):
@@ -108,10 +77,18 @@ def parse_json_field(field):
             return field
     return field
 
-JSON_COLS = ['ИнформацияОбразовании', 'hardSkills', 'softSkills', 'workExperienceList']
+def write_results_to_file(results, file_path):
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    with open(file_path, 'w', encoding='utf-8') as file:
+        for idx, resume in results.iterrows():
+            file.write(f"\nMatch {idx} (Score: {resume['_##_total_score']:.4f}):\n")
+            for column, value in resume.items():
+                if not column.startswith('_##_'):
+                    file.write(f"{column}: {value}\n")
+            file.write("\n")
 
-
-def prepare_resume_text(row):
+from typing import Dict, Any
+def prepare_resume_text(row: Dict[str, Any], idx: int) -> Dict[str, str]:
     text_parts = [
         str(row['Должность']),
         extract_text_from_json(parse_json_field(row['ИнформацияОбразовании'])),
@@ -121,24 +98,40 @@ def prepare_resume_text(row):
         f"{row['ОпытРаботы']} лет опыта работы",
         str(row['НазваниеНаселенногоПункта'])
     ]
-    return ' '.join(filter(None, text_parts))
+    return {'_##_resume_text': ' '.join(filter(None, text_parts))}
 
-def write_results_to_file(results, file_path):
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, 'w', encoding='utf-8') as file:
-        for i, (resume, score) in enumerate(results, 1):
-            file.write(f"\nMatch {i} (Score: {score:.4f}):\n")
-            for j, value in enumerate(resume):
-                if j > 0: 
-                    col_idx = j-1
-                    if col[col_idx] in JSON_COLS:
-                        file.write(f"  {col[col_idx]}: {json.dumps(parse_json_field(value), ensure_ascii=False)}\n")
-                    else:
-                        file.write(f"  {col[col_idx]}: {value}\n")
-                else:
-                    file.write(f"ID: {value}\n")
-            file.write("\n")
+@measure_execution_time
+def russian_semantic_search(vacancy, cv_dataset):
+    vacancy_text = preprocess_text(vacancy)
+    
+    # Generate embeddings
+    vacancy_embedding = get_embedding(vacancy_text)
 
+    scores, scored = cv_dataset.get_nearest_examples('_##_embeddings', vacancy_embedding, k=min(50, len(cv_dataset)))
+
+    scored_df = pd.DataFrame.from_dict(scored)[cv_dataset.column_names]
+    scored_df['_##_scores'] = scores
+    scored_df['_##_total_score'] = scored_df['_##_embeddings'].apply(lambda x: score_resume(x, vacancy_embedding))
+    scored_df = scored_df.sort_values(by='_##_total_score', ascending=False).head(5)
+
+    return scored_df
+
+@measure_execution_time
+def save_dataset(dataset, directory, name):
+    import faiss
+    os.makedirs(directory, exist_ok=True)
+    save_path = os.path.join(directory, f'{name}')
+    if '_##_embeddings' in dataset.list_indexes():
+        dataset.drop_index('_##_embeddings')
+    dataset.save_to_disk(save_path)
+    print(f"Dataset saved to {save_path}")
+    
+@measure_execution_time
+def load_dataset(load_path):
+    dataset = load_from_disk(load_path)
+    dataset.add_faiss_index(column="_##_embeddings")
+    print(f"Dataset loaded from {load_path}")
+    return dataset
 
 if __name__ == "__main__":
     url = 'https://opendata.trudvsem.ru/csv/cv.csv'
@@ -164,9 +157,17 @@ if __name__ == "__main__":
     with open('./data/vacancy.txt', 'rt', encoding='utf-8') as file:
         vacancy_description = file.read()
 
-    #prepared_resumes = [(resume, prepare_resume_text(resume)) for resume in resumes]
-    prepared_resumes = list(zip(resumes_df.itertuples(index=True), resumes_df.apply(prepare_resume_text, axis=1)))
-    top_matches = russian_semantic_search(vacancy_description, prepared_resumes)
+    if not os.path.exists('data/cv_dataset'):
+        cv_dataset = Dataset.from_pandas(resumes_df, preserve_index = True)
+        cv_dataset = cv_dataset.map(prepare_resume_text, with_indices=True)
+        cv_dataset = cv_dataset.map(
+            lambda x: {"_##_embeddings": get_embedding(x["_##_resume_text"])})
+        save_dataset(cv_dataset, 'data', 'cv_dataset')
+    else:
+        cv_dataset = load_dataset('data/cv_dataset')
+    cv_dataset.add_faiss_index(column="_##_embeddings")
+
+    top_matches = russian_semantic_search(vacancy_description, cv_dataset)
     write_results_to_file(top_matches, 'data/index_faiss.txt')
-    
+
     print("Search results have been written to data/index_faiss.txt")
