@@ -168,9 +168,7 @@ if __name__ == "__main__":
         vacancy_description = file.read()
 
     prepared_resumes = [(resume, prepare_resume_text(resume)) for resume in resumes]
-    
     top_matches = russian_semantic_search(vacancy_description, prepared_resumes)
-    
     write_results_to_file(top_matches, 'data/index_faiss.txt')
     
     print("Search results have been written to data/index_faiss.txt")
