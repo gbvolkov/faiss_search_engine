@@ -9,12 +9,12 @@ import os
 import time
 import requests
 
-POSITION = 4  # Должность
-EXPERIENCE = 5  # ОпытРаботы
-EDUCATION = 6  # ИнформацияОбразовании
-PROFESSIONAL_SKILLS = 7  # ПрофессиональныеНавыки
-SOFT_SKILLS = 8  # ГибкиеНавыки
-WORK_EXPERIENCE = 9  # ИнформацияОпытРаботы
+#POSITION = 4+1  # Должность
+#EXPERIENCE = 5+1  # ОпытРаботы
+#EDUCATION = 6+1  # ИнформацияОбразовании
+#PROFESSIONAL_SKILLS = 7+1  # ПрофессиональныеНавыки
+#SOFT_SKILLS = 8+1  # ГибкиеНавыки
+#WORK_EXPERIENCE = 9+1  # ИнформацияОпытРаботы
 
 SAMPLES_NUMBER = 100
 
@@ -108,14 +108,17 @@ def parse_json_field(field):
             return field
     return field
 
-def prepare_resume_text(resume):
+JSON_COLS = ['ИнформацияОбразовании', 'hardSkills', 'softSkills', 'workExperienceList']
+
+
+def prepare_resume_text(row):
     text_parts = [
-        str(resume[POSITION]),
-        extract_text_from_json(parse_json_field(resume[EDUCATION])),
-        extract_text_from_json(parse_json_field(resume[PROFESSIONAL_SKILLS])),
-        extract_text_from_json(parse_json_field(resume[SOFT_SKILLS])),
-        extract_text_from_json(parse_json_field(resume[WORK_EXPERIENCE])),
-        f"{resume[EXPERIENCE]} лет опыта работы"
+        str(row['Должность']),
+        extract_text_from_json(parse_json_field(row['ИнформацияОбразовании'])),
+        extract_text_from_json(parse_json_field(row['ПрофессиональныеНавыки'])),
+        extract_text_from_json(parse_json_field(row['ГибкиеНавыки'])),
+        extract_text_from_json(parse_json_field(row['ИнформацияОпытРаботы'])),
+        f"{row['ОпытРаботы']} лет опыта работы"
     ]
     return ' '.join(filter(None, text_parts))
 
@@ -125,10 +128,14 @@ def write_results_to_file(results, file_path):
         for i, (resume, score) in enumerate(results, 1):
             file.write(f"\nMatch {i} (Score: {score:.4f}):\n")
             for j, value in enumerate(resume):
-                if j == EDUCATION or j == PROFESSIONAL_SKILLS or j == SOFT_SKILLS or j == WORK_EXPERIENCE:
-                    file.write(f"  {col[j]}: {json.dumps(parse_json_field(value), ensure_ascii=False)}\n")
+                if j > 0: 
+                    col_idx = j-1
+                    if col[col_idx] in JSON_COLS:
+                        file.write(f"  {col[col_idx]}: {json.dumps(parse_json_field(value), ensure_ascii=False)}\n")
+                    else:
+                        file.write(f"  {col[col_idx]}: {value}\n")
                 else:
-                    file.write(f"  {col[j]}: {value}\n")
+                    file.write(f"ID: {value}\n")
             file.write("\n")
 
 
@@ -152,12 +159,12 @@ if __name__ == "__main__":
         'ГрафикРаботы','ЗП','ТипЗанятости','УровниВладенияЯзыками','ГотовностьКПереезду']
     
     resumes_df.to_csv('./data/resumes.csv', index=False)
-    resumes = list(resumes_df.itertuples(index=False, name=None))
 
     with open('./data/vacancy.txt', 'rt', encoding='utf-8') as file:
         vacancy_description = file.read()
 
-    prepared_resumes = [(resume, prepare_resume_text(resume)) for resume in resumes]
+    #prepared_resumes = [(resume, prepare_resume_text(resume)) for resume in resumes]
+    prepared_resumes = list(zip(resumes_df.itertuples(index=True), resumes_df.apply(prepare_resume_text, axis=1)))
     top_matches = russian_semantic_search(vacancy_description, prepared_resumes)
     write_results_to_file(top_matches, 'data/index_faiss.txt')
     
