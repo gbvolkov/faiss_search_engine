@@ -118,7 +118,8 @@ def prepare_resume_text(row):
         extract_text_from_json(parse_json_field(row['ПрофессиональныеНавыки'])),
         extract_text_from_json(parse_json_field(row['ГибкиеНавыки'])),
         extract_text_from_json(parse_json_field(row['ИнформацияОпытРаботы'])),
-        f"{row['ОпытРаботы']} лет опыта работы"
+        f"{row['ОпытРаботы']} лет опыта работы",
+        str(row['НазваниеНаселенногоПункта'])
     ]
     return ' '.join(filter(None, text_parts))
 
