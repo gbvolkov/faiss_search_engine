@@ -154,15 +154,15 @@ if __name__ == "__main__":
         'experience', 'educationList', 'hardSkills', 'softSkills', 'workExperienceList',
         'scheduleType', 'salary', 'busyType', 'languageKnowledge', 'relocation']
 
-    resumes = pd.read_csv('./data/cv.csv', on_bad_lines='skip', nrows=SAMPLES_NUMBER, sep='|')
-    resumes = resumes[col]
+    resumes_df = pd.read_csv('./data/cv.csv', on_bad_lines='skip', nrows=SAMPLES_NUMBER, sep='|')
+    resumes_df = resumes_df[col]
 
-    resumes.columns = ['НазваниеНаселенногоПункта','ДатаРождения','Возраст','Пол','Должность',
+    resumes_df.columns = ['НазваниеНаселенногоПункта','ДатаРождения','Возраст','Пол','Должность',
         'ОпытРаботы', 'ИнформацияОбразовании','ПрофессиональныеНавыки','ГибкиеНавыки','ИнформацияОпытРаботы',
         'ГрафикРаботы','ЗП','ТипЗанятости','УровниВладенияЯзыками','ГотовностьКПереезду']
     
-    resumes.to_csv('./data/resumes.csv', index=False)
-    resumes = load_resumes('data/resumes.csv')
+    resumes_df.to_csv('./data/resumes.csv', index=False)
+    resumes = list(resumes_df.itertuples(index=False, name=None))
 
     with open('./data/vacancy.txt', 'rt', encoding='utf-8') as file:
         vacancy_description = file.read()
