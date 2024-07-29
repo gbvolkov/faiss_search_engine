@@ -1,0 +1,9 @@
+pandas
+langchain 
+langchain-community 
+sentence_transformers 
+faiss-cpu 
+#faiss-gpu
+langchain-huggingface
+ipywidgets
+datasets
